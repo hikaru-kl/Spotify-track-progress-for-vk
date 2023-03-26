@@ -2,6 +2,7 @@ import vk_api
 import requests
 import asyncio
 import time
+import random
 
 ACCESS_TOKEN = open("vk_token.txt", "r").readlines()[0]
 SPOTIFY_SECRET = open("spotify_token.txt", "r").readlines()[0]
@@ -23,6 +24,7 @@ def convert_time(time_ms):
 
 
 async def main():
+    global SPOTIFY_SECRET
     while True:
         headers = {
             f"Authorization": "Bearer " + SPOTIFY_SECRET,
@@ -30,17 +32,31 @@ async def main():
         }
         r = requests.get(
             route("/me/player/currently-playing"), headers=headers)
-        data = r.json()
-        song_name = data["item"]["name"]
-        song_artist = data["item"]["artists"][0]["name"]
-        progress = convert_time(data["progress_ms"]) + \
-            "/" + convert_time(data["item"]["duration_ms"])
-        song_uri = data["item"]["uri"].split(":")
-        song_url = "https://{}.com/{}/{}".format(
-            song_uri[0], song_uri[1], song_uri[2])
-        status = f"Слушает: {song_artist} - {song_name} {progress}\n\n{song_url}"
-        vk_session.method("status.set", {"text": status})
-        time.sleep(31)
+        if 'application/json' in r.headers.get('Content-Type', ''):
+            data = r.json()
+        else:
+            try:
+                print(r.content)
+            except Exception as exp:
+                print(exp)
+                exit()
+            else:
+                print({"error": "missing json content"})
+                data = {"error": "missing json content"}
+        if "error" not in data.keys():
+            song_name = data["item"]["name"]
+            song_artist = data["item"]["artists"][0]["name"]
+            progress = convert_time(data["progress_ms"]) + \
+                "/" + convert_time(data["item"]["duration_ms"])
+            song_url = data["item"]["external_urls"]["spotify"]
+            status = f"Слушает: {song_artist} - {song_name} {progress}\n\n{song_url}"
+            vk_session.method("status.set", {"text": status})
+        else:
+            print(f"[ERROR] --> {data}")
+            if isinstance(data["error"], dict) and data["error"]["status"] == 401:
+                print("Trying to read new Spotify token..\nGet new token -> https://developer.spotify.com/console/get-users-currently-playing-track/")
+                SPOTIFY_SECRET = open("spotify_token.txt", "r").readlines()[0]
+        time.sleep(random.randint(25, 43))
 
 if __name__ == '__main__':
     asyncio.run(main())
